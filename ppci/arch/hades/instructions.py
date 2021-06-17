@@ -52,16 +52,11 @@ class ALUToken(Token):
 class ALUIToken(Token):
     class Info:
         size = 32
-    #imm = bit_range(0, 16)
-    #imminst = bit_range(16, 17)
-    #a = bit_range(17, 20)
-    #w = bit_range(20, 23)
-    #aluopcode = bit_range(23, 28)
-    imm = bit_range(16, 32)
-    imminst = bit_range(15, 16)
-    a = bit_range(12, 15)
-    w = bit_range(9, 12)
-    aluopcode = bit_range(4, 9)
+    imm = bit_range(0, 16)
+    imminst = bit_range(16, 17)
+    a = bit_range(17, 20)
+    w = bit_range(20, 23)
+    aluopcode = bit_range(23, 28)
  
 class Abs16Relocation(Relocation):
     name = 'abs16'
@@ -105,14 +100,14 @@ def make_alui(mnemonic, aluopcode):
         "aluopcode": aluopcode,
         "w": w,
         "a": a,
-        "imm": imm
+        "imm": imm,
+        "imminst": 1,
     }
     members = {
         "tokens": [ALUIToken],
         "w": w,
         "a": a,
-        "imm": imm,
-        "imminst": 1,
+        "imm": imm,        
         "syntax": syntax,
         "patterns": patterns,
     }
@@ -486,6 +481,7 @@ def pattern_fprel32(context, tree):
 @isa.pattern("stm", "STRU8(mem, reg)", size=4, cycles=1, energy=1)
 def pattern_str_32(context, tree, c0, c1):
     base, offset = c0
+    offset = offset // 4
     context.emit(Store(c1, base, offset))
 
 
@@ -498,6 +494,7 @@ def pattern_str_32(context, tree, c0, c1):
 def pattern_ldr_32(context, tree, c0):
     d = context.new_reg(HadesRegister)
     base, offset = c0
+    offset = offset // 4
     context.emit(Load(d, base, offset))
     return d
 

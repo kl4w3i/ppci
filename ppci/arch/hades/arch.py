@@ -14,19 +14,19 @@ class HadesArch(Architecture):
         super().__init__(options=options)
         self.info = ArchInfo(
             type_infos={
-                ir.i8: TypeInfo(1, 1),
-                ir.u8: TypeInfo(1, 1),
-                ir.i16: TypeInfo(2, 2),
-                ir.u16: TypeInfo(2, 2),
+                ir.i8: TypeInfo(1, 4),
+                ir.u8: TypeInfo(1, 4),
+                ir.i16: TypeInfo(2, 4),
+                ir.u16: TypeInfo(2, 4),
                 ir.i32: TypeInfo(4, 4),
                 ir.u32: TypeInfo(4, 4),
                 ir.i64: TypeInfo(8, 4),
                 ir.u64: TypeInfo(8, 4),
                 ir.f32: TypeInfo(4, 4),
-                ir.f64: TypeInfo(8, 8),
+                ir.f64: TypeInfo(8, 4),
                 "int": ir.i32,
                 "long": ir.i32,
-                "ptr": ir.u16
+                "ptr": ir.u32
             },
             register_classes = registers.register_classes,
             endianness=Endianness.LITTLE
@@ -100,7 +100,7 @@ class HadesArch(Architecture):
 
         if frame.stacksize > 0:
             size = round_up(frame.stacksize)
-            yield instructions.Addi(registers.sp, registers.sp, size)
+            yield instructions.Addi(registers.sp, registers.sp, size // 4)
 
         yield instructions.Load(registers.fp, registers.sp, 0)
 
