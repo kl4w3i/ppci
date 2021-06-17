@@ -14,6 +14,7 @@ from .or1k import Or1kArch
 from .riscv import RiscvArch
 from .stm8 import Stm8Arch
 from .xtensa import XtensaArch
+from .hades import HadesArch
 
 
 target_classes = [
@@ -30,6 +31,7 @@ target_classes = [
     Stm8Arch,
     X86_64Arch,
     XtensaArch,
+    HadesArch,
 ]
 
 
