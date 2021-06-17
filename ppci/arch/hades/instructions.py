@@ -52,11 +52,16 @@ class ALUToken(Token):
 class ALUIToken(Token):
     class Info:
         size = 32
-    imm = bit_range(0, 16)
-    imminst = bit_range(16, 17)
-    a = bit_range(17, 20)
-    w = bit_range(20, 23)
-    aluopcode = bit_range(23, 28)
+    #imm = bit_range(0, 16)
+    #imminst = bit_range(16, 17)
+    #a = bit_range(17, 20)
+    #w = bit_range(20, 23)
+    #aluopcode = bit_range(23, 28)
+    imm = bit_range(16, 32)
+    imminst = bit_range(15, 16)
+    a = bit_range(12, 15)
+    w = bit_range(9, 12)
+    aluopcode = bit_range(4, 9)
  
 class Abs16Relocation(Relocation):
     name = 'abs16'

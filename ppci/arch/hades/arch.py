@@ -29,7 +29,7 @@ class HadesArch(Architecture):
                 "ptr": ir.u16
             },
             register_classes = registers.register_classes,
-            endianness=Endianness.BIG
+            endianness=Endianness.LITTLE
         )
         self.isa = instructions.isa + data_isa
         self.assembler = BaseAssembler()
