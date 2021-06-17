@@ -11,6 +11,14 @@ class OpcodeToken(Token):
     aluopcode = bit_range(23, 28)
     opcode = bit_range(28, 32)
 
+class JalToken(OpcodeToken):
+    class Info:
+        size = 32
+    w = bit_range(20, 23)
+    imminst = bit_range(16, 17)
+    imop12 = bit_range(0, 12)
+
+
 class Imm12Token(Token):
     class Info:
         size = 32
@@ -58,10 +66,10 @@ class ALUIToken(Token):
     w = bit_range(20, 23)
     aluopcode = bit_range(23, 28)
  
-class Abs16Relocation(Relocation):
-    name = 'abs16'
-    token = Imm12Token
-    field = 'label'
+class Rel12Relocation(Relocation):
+    name = 'rel12'
+    token = JalToken
+    field = 'imop12'
     def calc(self, symbol_value, reloc_value):
         return symbol_value
 
@@ -301,7 +309,7 @@ class Jal(HadesInstruction):
     }
 
     def reloactions(self):
-        return [Abs16Relocation(self.label, offset=1)]
+        return [Rel12Relocation(self.label, offset=1)]
 
 class Jreg(HadesInstruction):
     a = Operand('a', HadesRegister, read=True)
