@@ -1,7 +1,7 @@
 from ... import ir
 from ...binutils.assembler import BaseAssembler
 from ..arch import Architecture
-from ..arch_info import ArchInfo, TypeInfo
+from ..arch_info import ArchInfo, TypeInfo, Endianness
 from ..generic_instructions import Label, Alignment, RegisterUseDef
 from ..data_instructions import data_isa
 from ..runtime import get_runtime_files
@@ -28,7 +28,8 @@ class HadesArch(Architecture):
                 "long": ir.i32,
                 "ptr": ir.u16
             },
-            register_classes = registers.register_classes
+            register_classes = registers.register_classes,
+            endianness=Endianness.BIG
         )
         self.isa = instructions.isa + data_isa
         self.assembler = BaseAssembler()
