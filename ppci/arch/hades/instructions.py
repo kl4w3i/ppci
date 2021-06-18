@@ -8,12 +8,14 @@ from . import registers
 class OpcodeToken(Token):
     class Info:
         size = 32
+        endianness = 'big'
     aluopcode = bit_range(23, 28)
     opcode = bit_range(28, 32)
 
 class JalToken(OpcodeToken):
     class Info:
         size = 32
+        endianness = 'big'
     w = bit_range(20, 23)
     imminst = bit_range(16, 17)
     imop12 = bit_range(0, 12)
@@ -22,6 +24,7 @@ class JalToken(OpcodeToken):
 class Imm12Token(Token):
     class Info:
         size = 32
+        endianness = 'big'
     imm = bit_range(0, 12)
     i = bit_range(14, 16)
     imminst = bit_range(16, 17)
@@ -33,11 +36,13 @@ class Imm12Token(Token):
 class JmpRToken(OpcodeToken):
     class Info:
         size = 32
+        endianness = 'big'
     a = bit_range(17, 20)
 
 class Imm16Token(Token):
     class Info:
         size = 32
+        endianness = 'big'
     imm = bit_range(0, 16)
     imminst = bit_range(16, 17)
     a = bit_range(17, 20)
@@ -48,6 +53,7 @@ class Imm16Token(Token):
 class GetSwiToken(Token):
     class Info:
         size = 32
+        endianness = 'big'
     i1 = bit_range(0, 1)
     imminst = bit_range(16, 17)
     w = bit_range(20, 23)
@@ -57,6 +63,7 @@ class GetSwiToken(Token):
 class ALUToken(Token):
     class Info:
         size = 32
+        endianness = 'big'
     b = bit_range(13, 16)
     a = bit_range(17, 20)
     w = bit_range(20, 23)
@@ -65,6 +72,7 @@ class ALUToken(Token):
 class ALUIToken(Token):
     class Info:
         size = 32
+        endianness = 'big'
     imm = bit_range(0, 16)
     imminst = bit_range(16, 17)
     a = bit_range(17, 20)
@@ -380,109 +388,134 @@ class Call(HadesInstruction):
     }
 
     def relocations(self):
-        return [Rel12Relocation(self.target, offset=1, addend=-4)]
+        return [Rel12Relocation(self.target, offset=1)]
+
+#class Push(HadesInstruction):
+#    """ Push a register onto the stack """
+#    reg = Operand("reg", HadesRegister, read=True)
+#    syntax = Syntax(["push", " ", reg])
+#
+#    def encode(self):
+#        code = []
+#        # STORE self.reg.num sp 0
+#        opcode = 0x98
+#        regs = 0x80 + (self.reg.num << 4) + (registers.sp.num << 1) + 1
+#        code.append(0x00)
+#        code.append(0x00)
+#        code.append(regs)
+#        code.append(opcode)
+#        # ADDI sp sp 1  
+#        opcode = 0x08
+#        regs = 0x80 + (registers.sp.num << 4) + (registers.sp.num << 1) + 1
+#        code.append(0x01)
+#        code.append(0x00)
+#        code.append(regs)
+#        code.append(opcode)
+#        return bytes(code)
+
+def Mov(dst, src):
+    return Addi(dst, src, 0)
+
+def Ldi(dst, imm):
+    return Addi(dst, registers.r0, imm)
+
+def Ldui(dst, imm):
+    return Ori(dst, registers.r0, imm)
+
+def Inc(reg):
+    return Addi(reg, reg, 1)
+
+def Dec(reg):
+    return Subi(reg, reg, 1)
+
+def Jmp(imm):
+    return Beqz(registers.r0, imm)
+
+#def Pop(reg):
+#    return (Load(reg, registers.sp, -1) + Subi(registers.sp, registers.sp, 1))
 
 
-class Push(HadesInstruction):
-    """ Push a register onto the stack """
-    reg = Operand("reg", HadesRegister, read=True)
-    syntax = Syntax(["push", " ", reg])
-
-    def encode(self):
-        code = []
-        # STORE self.reg.num sp 0
-        regbits = self.reg.num << 20
-        spbits = registers.sp.num << 17
-        opcode = 0x98800000
-        storeinst = opcode + regbits + spbits
-        code.append(storeinst)
-        # ADDI sp sp 1  
-        addinst = 0x04010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
-        code.append(addinst)
-        return bytes(code)
-    
-
-class Pop(HadesInstruction):
-    """ Pop a register of the stack """
-
-    reg = Operand("reg", HadesRegister, write=True)
-    syntax = Syntax(["pop", " ", reg])
-
-    def encode(self):
-        code = []
-        # SUBI sp sp 1  
-        subinst = 0x08010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
-        code.append(subinst)
-        # LOAD self.reg.num sp 0
-        regbits = self.reg.num << 20
-        spbits = registers.sp.num << 17
-        opcode = 0x88810000
-        loadinst = opcode + regbits + spbits
-        code.append(loadinst)
-        return bytes(code)
-
-
-class Mov(HadesInstruction):
-    a = Operand("a", HadesRegister, read=True)
-    w = Operand("w", HadesRegister, write=True)
-    syntax = Syntax(["mov", " ", a, ",", " ", w])
-
-    def encode(self):
-        code = []
-        inst = 0x08810000 + (self.w.num << 20) + (self.a.num << 17)
-        code.append(inst)
-
-
-class Ldi(HadesInstruction):
-    w = Operand("w", HadesRegister, read=True)
-    k = Operand('k', int)
-    syntax = Syntax(["ldi", " ", w, ",", " ", "#", k])
-
-    def encode(self):
-        code = []
-        inst = 0x08810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
-        code.append(inst)
-
-
-class Ldui(HadesInstruction):
-    w = Operand("w", HadesRegister, read=True)
-    k = Operand('k', int)
-    syntax = Syntax(["ldui", " ", w, ",", " ", "#", k])
-
-    def encode(self):
-        code = []
-        inst = 0x04810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
-        code.append(inst)
-
-
-class Inc(HadesInstruction):
-    a = Operand("a", HadesRegister, write=True, read=True)
-    syntax = Syntax(["inc", " ", a])
-
-    def encode(self):
-        code = []
-        inst = 0x08810000 + (self.a.num << 20) + (self.a.num << 17) + 1
-        code.append(inst)
-
-
-class Dec(HadesInstruction):
-    a = Operand("a", HadesRegister, write=True, read=True)
-    syntax = Syntax(["inc", " ", a])
-
-    def encode(self):
-        code = []
-        inst = 0x08010000 + (self.a.num << 20) + (self.a.num << 17) + 1
-        code.append(inst)
-
-
-class Jmp(HadesInstruction):
-    k = Operand('k', int)
-    syntax = Syntax(["jmp", " ", "#", k])
-
-    def encode(self):
-        code = []
-        inst = 0x66810000 + (registers.r0.num << 17) + self.k
-        code.append(inst)
+#class Pop(HadesInstruction):
+#    """ Pop a register of the stack """
+#
+#    reg = Operand("reg", HadesRegister, write=True)
+#    syntax = Syntax(["pop", " ", reg])
+#
+#    def encode(self):
+#        code = []
+#        # SUBI sp sp 1  
+#        subinst = 0x08010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
+#        code.append(subinst)
+#        # LOAD self.reg.num sp 0
+#        regbits = self.reg.num << 20
+#        spbits = registers.sp.num << 17
+#        opcode = 0x88810000
+#        loadinst = opcode + regbits + spbits
+#        code.append(loadinst)
+#        return bytes(code)
+#
+#
+#class Mov(HadesInstruction):
+#    a = Operand("a", HadesRegister, read=True)
+#    w = Operand("w", HadesRegister, write=True)
+#    syntax = Syntax(["mov", " ", a, ",", " ", w])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x08810000 + (self.w.num << 20) + (self.a.num << 17)
+#        code.append(inst)
+#
+#
+#class Ldi(HadesInstruction):
+#    w = Operand("w", HadesRegister, read=True)
+#    k = Operand('k', int)
+#    syntax = Syntax(["ldi", " ", w, ",", " ", "#", k])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x08810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
+#        code.append(inst)
+#
+#
+#class Ldui(HadesInstruction):
+#    w = Operand("w", HadesRegister, read=True)
+#    k = Operand('k', int)
+#    syntax = Syntax(["ldui", " ", w, ",", " ", "#", k])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x04810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
+#        code.append(inst)
+#
+#
+#class Inc(HadesInstruction):
+#    a = Operand("a", HadesRegister, write=True, read=True)
+#    syntax = Syntax(["inc", " ", a])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x08810000 + (self.a.num << 20) + (self.a.num << 17) + 1
+#        code.append(inst)
+#
+#
+#class Dec(HadesInstruction):
+#    a = Operand("a", HadesRegister, write=True, read=True)
+#    syntax = Syntax(["inc", " ", a])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x08010000 + (self.a.num << 20) + (self.a.num << 17) + 1
+#        code.append(inst)
+#
+#
+#class Jmp(HadesInstruction):
+#    k = Operand('k', int)
+#    syntax = Syntax(["jmp", " ", "#", k])
+#
+#    def encode(self):
+#        code = []
+#        inst = 0x66810000 + (registers.r0.num << 17) + self.k
+#        code.append(inst)
 
 
 # Arithmatic patterns:

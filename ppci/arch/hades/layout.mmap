@@ -1,0 +1,11 @@
+ENTRY(__init)
+
+MEMORY code LOCATION=0x000 SIZE=0x400 {
+    SECTION(reset)
+    ALIGN(4)
+    SECTION(code)
+}
+
+MEMORY ram LOCATION=0x500 SIZE=0x200 {
+    SECTION(data)
+}

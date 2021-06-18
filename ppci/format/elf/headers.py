@@ -116,6 +116,7 @@ class ElfMachine(enum.IntEnum):
     TILEGX = 191
     CLOUDSHIELD = 192
     RISCV = 0xF3  # 243
+    HADES = 0xF4
 
     @classmethod
     def has_value(cls, value):

@@ -30,7 +30,7 @@ class HadesArch(Architecture):
                 "ptr": ir.u32
             },
             register_classes = registers.register_classes,
-            endianness=Endianness.LITTLE
+            endianness=Endianness.BIG
         )
         self.isa = instructions.isa + data_isa
         self.assembler = BaseAssembler()
@@ -79,8 +79,11 @@ class HadesArch(Architecture):
         yield Label(frame.name)
 
         # save fp:
-        yield instructions.Push(registers.ra)
-        yield instructions.Push(registers.fp)
+        #yield instructions.Push(registers.ra)
+        #yield instructions.Push(registers.fp)
+        yield instructions.Subi(registers.sp, registers.sp, 2)
+        yield instructions.Store(registers.ra, registers.sp, 2)
+        yield instructions.Store(registers.fp, registers.sp, 1)
 
         # setup frame pointer:
         yield self.move(registers.fp, registers.sp)
@@ -93,13 +96,17 @@ class HadesArch(Architecture):
 
         # Callee save registers:
         for reg in self.get_callee_saved(frame):
-            yield instructions.Push(reg)
+            #yield instructions.Push(reg)
+            yield instructions.Subi(registers.sp, registers.sp, 1)
+            yield instructions.Store(reg, registers.sp, 1)
 
     def gen_epilogue(self, frame):
         """ Return epilogue sequence """
         # Pop save registers back:
         for reg in reversed(self.get_callee_saved(frame)):
-            yield instructions.Pop(reg)
+            #yield instructions.Pop(reg)
+            yield instructions.Load(reg, registers.sp, 1)
+            yield instructions.Addi(registers.sp, registers.sp, 1)
 
         # Give free stack space:
         if frame.stacksize > 0:
@@ -107,8 +114,11 @@ class HadesArch(Architecture):
             yield instructions.Addi(registers.sp, registers.sp, size // 4)
 
         # Restore rbp:
-        yield instructions.Pop(registers.fp)
-        yield instructions.Pop(registers.ra)
+        #yield instructions.Pop(registers.fp)
+        #yield instructions.Pop(registers.ra)
+        yield instructions.Load(registers.fp, registers.sp, 1)
+        yield instructions.Load(registers.ra, registers.sp, 2)
+        yield instructions.Addi(registers.sp, registers.sp, 2)
 
         # Return
         yield instructions.Jreg(registers.ra)
