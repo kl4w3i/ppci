@@ -30,6 +30,11 @@ class Imm12Token(Token):
     aluopcode = bit_range(23, 28)
     opcode = bit_range(28, 32)
 
+class JmpRToken(OpcodeToken):
+    class Info:
+        size = 32
+    a = bit_range(17, 20)
+
 class Imm16Token(Token):
     class Info:
         size = 32
@@ -65,15 +70,18 @@ class ALUIToken(Token):
     a = bit_range(17, 20)
     w = bit_range(20, 23)
     aluopcode = bit_range(23, 28)
- 
+
+isa = Isa()
+
+@isa.register_relocation
 class Rel12Relocation(Relocation):
     name = 'rel12'
     token = JalToken
     field = 'imop12'
-    def calc(self, symbol_value, reloc_value):
-        return symbol_value
 
-isa = Isa()
+    def calc(self, sym_value, reloc_value):
+        offset = sym_value - reloc_value
+        return offset
 
 class HadesInstruction(Instruction):
     isa = isa
@@ -298,23 +306,23 @@ class Store(HadesInstruction):
 
 class Jal(HadesInstruction):
     w = Operand('w', HadesRegister, write=True)
-    label = Operand('label', str)
-    syntax = Syntax(['jal', ' ', w, ',', ' ', '*', label])
-    tokens = [Imm12Token]
+    target = Operand('target', str)
+    syntax = Syntax(['jal', ' ', w, ',', ' ', '*', target])
+    tokens = [JalToken]
     patterns = {
         'opcode': 10,
         'aluopcode': 14,
-        'wb': w,
+        'w': w,
         'imminst': 1
     }
 
-    def reloactions(self):
-        return [Rel12Relocation(self.label, offset=1)]
+    def relocations(self):        
+        return [Rel12Relocation(self.target, offset=1)]
 
 class Jreg(HadesInstruction):
     a = Operand('a', HadesRegister, read=True)
     syntax = Syntax(['jreg', ' ', a])
-    tokens = [Imm16Token]
+    tokens = [JmpRToken]
     patterns = {
         'opcode': 11,
         'aluopcode': 6,
@@ -355,29 +363,126 @@ class Epma(HadesInstruction):
         'opcode': 15
     }
 
-def mov(dst, src):
-    return Addi(dst, src, 0)
 
-def ldi(dst, imm):
-    return Addi(dst, registers.r0, imm)
+### additional instructions ###
+class Call(HadesInstruction):
+    """ call a function """
 
-def ldui(dst, imm):
-    return Ori(dst, registers.r0, imm)
+    target = Operand("target", str)
+    w = Operand("w", HadesRegister, write=True)
+    syntax = Syntax(["call", " ", w, ",", " ", target])
+    tokens = [JalToken]
+    patterns = {
+        'opcode': 10,
+        'aluopcode': 14,
+        'w': w,
+        'imminst': 1
+    }
 
-def inc(reg):
-    return Addi(reg, reg, 1)
+    def relocations(self):
+        return [Rel12Relocation(self.target, offset=1, addend=-4)]
 
-def dec(reg):
-    return Subi(reg, reg, 1)
 
-def jmp(imm):
-    return Beqz(registers.r0, imm)
+class Push(HadesInstruction):
+    """ Push a register onto the stack """
+    reg = Operand("reg", HadesRegister, read=True)
+    syntax = Syntax(["push", " ", reg])
 
-def push(reg):
-    return (Store(reg, registers.sp, 0) + Addi(registers.sp, registers.sp, 1))
+    def encode(self):
+        code = []
+        # STORE self.reg.num sp 0
+        regbits = self.reg.num << 20
+        spbits = registers.sp.num << 17
+        opcode = 0x98800000
+        storeinst = opcode + regbits + spbits
+        code.append(storeinst)
+        # ADDI sp sp 1  
+        addinst = 0x04010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
+        code.append(addinst)
+        return bytes(code)
+    
 
-def pop(reg):
-    return (Load(reg, registers.sp, -1) + Subi(registers.sp, registers.sp, 1))
+class Pop(HadesInstruction):
+    """ Pop a register of the stack """
+
+    reg = Operand("reg", HadesRegister, write=True)
+    syntax = Syntax(["pop", " ", reg])
+
+    def encode(self):
+        code = []
+        # SUBI sp sp 1  
+        subinst = 0x08010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
+        code.append(subinst)
+        # LOAD self.reg.num sp 0
+        regbits = self.reg.num << 20
+        spbits = registers.sp.num << 17
+        opcode = 0x88810000
+        loadinst = opcode + regbits + spbits
+        code.append(loadinst)
+        return bytes(code)
+
+
+class Mov(HadesInstruction):
+    a = Operand("a", HadesRegister, read=True)
+    w = Operand("w", HadesRegister, write=True)
+    syntax = Syntax(["mov", " ", a, ",", " ", w])
+
+    def encode(self):
+        code = []
+        inst = 0x08810000 + (self.w.num << 20) + (self.a.num << 17)
+        code.append(inst)
+
+
+class Ldi(HadesInstruction):
+    w = Operand("w", HadesRegister, read=True)
+    k = Operand('k', int)
+    syntax = Syntax(["ldi", " ", w, ",", " ", "#", k])
+
+    def encode(self):
+        code = []
+        inst = 0x08810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
+        code.append(inst)
+
+
+class Ldui(HadesInstruction):
+    w = Operand("w", HadesRegister, read=True)
+    k = Operand('k', int)
+    syntax = Syntax(["ldui", " ", w, ",", " ", "#", k])
+
+    def encode(self):
+        code = []
+        inst = 0x04810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
+        code.append(inst)
+
+
+class Inc(HadesInstruction):
+    a = Operand("a", HadesRegister, write=True, read=True)
+    syntax = Syntax(["inc", " ", a])
+
+    def encode(self):
+        code = []
+        inst = 0x08810000 + (self.a.num << 20) + (self.a.num << 17) + 1
+        code.append(inst)
+
+
+class Dec(HadesInstruction):
+    a = Operand("a", HadesRegister, write=True, read=True)
+    syntax = Syntax(["inc", " ", a])
+
+    def encode(self):
+        code = []
+        inst = 0x08010000 + (self.a.num << 20) + (self.a.num << 17) + 1
+        code.append(inst)
+
+
+class Jmp(HadesInstruction):
+    k = Operand('k', int)
+    syntax = Syntax(["jmp", " ", "#", k])
+
+    def encode(self):
+        code = []
+        inst = 0x66810000 + (registers.r0.num << 17) + self.k
+        code.append(inst)
 
 
 # Arithmatic patterns:
@@ -516,7 +621,7 @@ def pattern_ldr_32(context, tree, c0):
 @isa.pattern("stm", "MOVU8(reg)", size=4, cycles=1, energy=1)
 def pattern_mov32(context, tree, c0):
     d = tree.value
-    context.emit(mov(d, c0))
+    context.emit(Mov(d, c0))
 
 
 @isa.pattern("reg", "CONSTI32", size=8, cycles=2, energy=2)
@@ -526,7 +631,7 @@ def pattern_const32(context, tree):
     upper = (value >> 16) & 0xFFFF
     lower = value & 0xFFFF
     d = context.new_reg(HadesRegister)
-    context.emit(ldi(d, upper))
+    context.emit(Ldi(d, upper))
     context.emit(Shli(d, d, 16))
     context.emit(Ori(d, d, lower))
     return d
@@ -539,7 +644,7 @@ def pattern_const32(context, tree):
 def pattern_const16(context, tree):
     value = tree.value & 0xFFFF
     d = context.new_reg(HadesRegister)
-    context.emit(ldi(d, value))
+    context.emit(Ldi(d, value))
     return d
 
 
@@ -590,27 +695,27 @@ def pattern_cast(context, tree, c0):
 def pattern_label(context, tree):
     label = tree.value
     d = context.new_reg(HadesRegister)
-    context.emit(mov(d, label))
+    context.emit(Mov(d, label))
     return d
 
 
 # Jump
 jump_opnames = {"<": Slt, ">": Sgt, "==": Seq, "!=": Sne, ">=": Sge, "<=": Sle}
 
-@isa.pattern("stm", "JMP", size=4)
+@isa.pattern("stm", "JMP")
 def pattern_jmp(context, tree):
     tgt = tree.value
     context.emit(Jal(registers.ra, tgt.name, jumps=[tgt]))
 
 
-@isa.pattern("stm", "CJMPI32(reg, reg)")
-@isa.pattern("stm", "CJMPI8(reg, reg)")
-@isa.pattern("stm", "CJMPU8(reg, reg)")
-def pattern_cjmp(context, tree, c0, c1):
-    op, yes_label, no_label = tree.value
-    d = context.new_reg(HadesRegister)
-    Bop = jump_opnames[op]
-    context.emit(Bop(d, c0, c1))
-    context.emit(Bnez(d, jumps=[yes_label]))
-    context.emit(Jal(registers.ra, no_label.name, jumps=[no_label]))
-    return
+#@isa.pattern("stm", "CJMPI32(reg, reg)")
+#@isa.pattern("stm", "CJMPI8(reg, reg)")
+#@isa.pattern("stm", "CJMPU8(reg, reg)")
+#def pattern_cjmp(context, tree, c0, c1):
+#    op, yes_label, no_label = tree.value
+#    d = context.new_reg(HadesRegister)
+#    Bop = jump_opnames[op]
+#    context.emit(Bop(d, c0, c1))
+#    context.emit(Bnez(d, jumps=[yes_label]))
+#    context.emit(Jal(registers.ra, no_label.name, jumps=[no_label]))
+#    return

@@ -5,6 +5,7 @@ from ..arch_info import ArchInfo, TypeInfo, Endianness
 from ..generic_instructions import Label, Alignment, RegisterUseDef
 from ..data_instructions import data_isa
 from ..runtime import get_runtime_files
+from ..registers import Register
 from . import instructions, registers
 
 class HadesArch(Architecture):
@@ -57,14 +58,16 @@ class HadesArch(Architecture):
                 ir.u32,
                 ir.ptr,
             ]:
-                reg = int_regs.pop(0)
+                if int_regs:
+                    reg = int_regs.pop(0)
+                else:
+                    raise NotImplementedError("Stack parameter not implemented.")
             else:  # pragma: no cover
                 raise NotImplementedError(str(arg_type))
             arg_locs.append(reg)
         return arg_locs
     
     def determine_rv_location(self, ret_type):
-        """ return value in v0-v1 """
         if ret_type in [ir.i8, ir.u8, ir.i16, ir.u16, ir.i32, ir.u32, ir.ptr]:
             rv = registers.r1
         else:  # pragma: no cover
@@ -73,20 +76,20 @@ class HadesArch(Architecture):
 
     def gen_prologue(self, frame):
         """ Returns prologue instruction sequence """
-
         yield Label(frame.name)
 
-        yield instructions.Addi(registers.sp, registers.sp, -2)
+        # save fp:
+        yield instructions.Push(registers.ra)
+        yield instructions.Push(registers.fp)
 
-        # First save return address (which is in a0):
-        yield instructions.Store(registers.ra, registers.sp, 1)
+        # setup frame pointer:
+        yield self.move(registers.fp, registers.sp)
 
         # Reserve stack space
         if frame.stacksize > 0:
             # Prepare frame pointer:
-            yield self.move(registers.fp, registers.sp)
-            size = -round_up(frame.stacksize)
-            yield instructions.Addi(registers.sp, registers.sp, size // 4)
+            size = round_up(frame.stacksize)
+            yield instructions.Subi(registers.sp, registers.sp, size // 4)
 
         # Callee save registers:
         for reg in self.get_callee_saved(frame):
@@ -98,15 +101,14 @@ class HadesArch(Architecture):
         for reg in reversed(self.get_callee_saved(frame)):
             yield instructions.Pop(reg)
 
+        # Give free stack space:
         if frame.stacksize > 0:
             size = round_up(frame.stacksize)
             yield instructions.Addi(registers.sp, registers.sp, size // 4)
 
-        yield instructions.Load(registers.fp, registers.sp, 0)
-
-        # Restore return address:
-        yield instructions.Load(registers.ra, registers.sp, 1)
-        yield instructions.Addi(registers.sp, registers.sp, 2)
+        # Restore rbp:
+        yield instructions.Pop(registers.fp)
+        yield instructions.Pop(registers.ra)
 
         # Return
         yield instructions.Jreg(registers.ra)
@@ -122,21 +124,25 @@ class HadesArch(Architecture):
         arg_types = [a[0] for a in args]
         arg_locs = self.determine_arg_locations(arg_types)
 
-        arg_regs = []
+        reg_args = []
         for arg_loc, arg2 in zip(arg_locs, args):
             arg = arg2[1]
             if isinstance(arg_loc, registers.HadesRegister):
-                arg_regs.append(arg_loc)
+                reg_args.append((arg_loc, arg))
                 yield self.move(arg_loc, arg)
             else:  # pragma: no cover
                 raise NotImplementedError("Parameters in memory not impl")
 
+        # Mark all dedicated registers as used:
+        arg_regs = set(
+            arg_loc for arg_loc in arg_locs if isinstance(arg_loc, Register)
+        )
         yield RegisterUseDef(uses=arg_regs)
 
         if isinstance(label, registers.HadesRegister):
             yield instructions.Jreg(label, clobbers=registers.caller_save)
         else:
-            yield instructions.Jal(registers.ra, label, clobbers=registers.caller_save)
+            yield instructions.Call(registers.ra, label, clobbers=registers.caller_save)
 
         if rv:
             retval_loc = self.determine_rv_location(rv[0])
@@ -162,13 +168,14 @@ class HadesArch(Architecture):
     def gen_function_exit(self, rv):
         live_out = set()
         if rv:
-            retval_loc = self.determine_rv_location(rv[0])
-            yield self.move(retval_loc, rv[1])
-            live_out.add(retval_loc)
+            if rv[1]:
+                retval_loc = self.determine_rv_location(rv[0])
+                yield self.move(retval_loc, rv[1])
+                live_out.add(retval_loc)
         yield RegisterUseDef(uses=live_out)
 
     def move(self, dst, src):
-        return instructions.mov(dst, src)
+        return instructions.Mov(dst, src)
 
 def round_up(s):
     return s + (4 - s % 4)
