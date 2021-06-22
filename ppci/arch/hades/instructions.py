@@ -88,7 +88,7 @@ class Rel12Relocation(Relocation):
     field = 'imop12'
 
     def calc(self, sym_value, reloc_value):
-        offset = sym_value - reloc_value
+        offset = (sym_value - reloc_value) >> 2        
         return offset
 
 class HadesInstruction(Instruction):
@@ -373,22 +373,22 @@ class Epma(HadesInstruction):
 
 
 ### additional instructions ###
-class Call(HadesInstruction):
-    """ call a function """
-
-    target = Operand("target", str)
-    w = Operand("w", HadesRegister, write=True)
-    syntax = Syntax(["call", " ", w, ",", " ", target])
-    tokens = [JalToken]
-    patterns = {
-        'opcode': 10,
-        'aluopcode': 14,
-        'w': w,
-        'imminst': 1
-    }
-
-    def relocations(self):
-        return [Rel12Relocation(self.target, offset=1)]
+#class Call(HadesInstruction):
+#    """ call a function """
+#
+#    target = Operand("target", str)
+#    w = Operand("w", HadesRegister, write=True)
+#    syntax = Syntax(["call", " ", w, ",", " ", target])
+#    tokens = [JalToken]
+#    patterns = {
+#        'opcode': 10,
+#        'aluopcode': 14,
+#        'w': w,
+#        'imminst': 1
+#    }
+#
+#    def relocations(self):
+#        return [Rel12Relocation(self.target, offset=1)]
 
 #class Push(HadesInstruction):
 #    """ Push a register onto the stack """
@@ -606,6 +606,19 @@ def pattern_dev(context, tree, c0, c1):
     # TODO
     return registers.r0
 
+@isa.pattern("reg", "FPRELU32", size=0, cycles=0, energy=0)
+@isa.pattern("reg", "FPRELU16", size=0, cycles=0, energy=0)
+def pattern_fprel32(context, tree):
+    d = context.new_reg(HadesRegister)
+    offset = tree.value.offset
+    base = registers.fp
+    assert isinstance(offset, int)
+    if (offset >= 0):
+        context.emit(Addi(d, base, offset))
+    else:
+        context.emit(Subi(d, base, -offset))
+    return d
+
 
 # Memory patterns:
 @isa.pattern("mem", "reg", size=0, cycles=0, energy=0)
@@ -749,6 +762,6 @@ def pattern_jmp(context, tree):
 #    d = context.new_reg(HadesRegister)
 #    Bop = jump_opnames[op]
 #    context.emit(Bop(d, c0, c1))
-#    context.emit(Bnez(d, jumps=[yes_label]))
+#    context.emit(Bnez(d, 1, jumps=[yes_label]))
 #    context.emit(Jal(registers.ra, no_label.name, jumps=[no_label]))
 #    return

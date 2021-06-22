@@ -7,6 +7,7 @@ from ..data_instructions import data_isa
 from ..runtime import get_runtime_files
 from ..registers import Register
 from . import instructions, registers
+import math
 
 class HadesArch(Architecture):
     name = "hades"
@@ -89,10 +90,10 @@ class HadesArch(Architecture):
         yield self.move(registers.fp, registers.sp)
 
         # Reserve stack space
-        if frame.stacksize > 0:
+        size = math.ceil(frame.stacksize / 4.0)
+        if size > 0:
             # Prepare frame pointer:
-            size = round_up(frame.stacksize)
-            yield instructions.Subi(registers.sp, registers.sp, size // 4)
+            yield instructions.Subi(registers.sp, registers.sp, size)
 
         # Callee save registers:
         for reg in self.get_callee_saved(frame):
@@ -109,9 +110,12 @@ class HadesArch(Architecture):
             yield instructions.Addi(registers.sp, registers.sp, 1)
 
         # Give free stack space:
-        if frame.stacksize > 0:
-            size = round_up(frame.stacksize)
-            yield instructions.Addi(registers.sp, registers.sp, size // 4)
+        size = math.ceil(frame.stacksize / 4.0)
+        if size > 0:
+            yield instructions.Addi(registers.sp, registers.sp, size)
+
+        # setup stack pointer:
+        yield self.move(registers.sp, registers.fp)
 
         # Restore rbp:
         #yield instructions.Pop(registers.fp)
@@ -152,7 +156,7 @@ class HadesArch(Architecture):
         if isinstance(label, registers.HadesRegister):
             yield instructions.Jreg(label, clobbers=registers.caller_save)
         else:
-            yield instructions.Call(registers.ra, label, clobbers=registers.caller_save)
+            yield instructions.Jal(registers.ra, label, clobbers=registers.caller_save)
 
         if rv:
             retval_loc = self.determine_rv_location(rv[0])
@@ -186,6 +190,3 @@ class HadesArch(Architecture):
 
     def move(self, dst, src):
         return instructions.Mov(dst, src)
-
-def round_up(s):
-    return s + (4 - s % 4)
