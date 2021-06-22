@@ -674,12 +674,15 @@ def pattern_mov32(context, tree, c0):
 @isa.pattern("reg", "CONSTU32", size=8, cycles=2, energy=2)
 def pattern_const32(context, tree):
     value = tree.value
-    upper = (value >> 16) & 0xFFFF
-    lower = value & 0xFFFF
     d = context.new_reg(HadesRegister)
-    context.emit(Ldi(d, upper))
-    context.emit(Shli(d, d, 16))
-    context.emit(Ori(d, d, lower))
+    lower = value & 0xFFFF        
+    if (value > 0xFFFF):
+        upper = (value >> 16) & 0xFFFF
+        context.emit(Ldi(d, upper))
+        context.emit(Shli(d, d, 16))
+        context.emit(Ori(d, d, lower))
+    else:
+        context.emit(Ldi(d, lower))
     return d
 
 
