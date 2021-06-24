@@ -12,11 +12,12 @@ class OpcodeToken(Token):
     aluopcode = bit_range(23, 28)
     opcode = bit_range(28, 32)
 
-class JalToken(OpcodeToken):
+class JmpToken(OpcodeToken):
     class Info:
         size = 32
         endianness = 'big'
     w = bit_range(20, 23)
+    a = bit_range(17, 20)
     imminst = bit_range(16, 17)
     imop12 = bit_range(0, 12)
 
@@ -32,12 +33,6 @@ class Imm12Token(Token):
     wb = bit_range(20, 23)
     aluopcode = bit_range(23, 28)
     opcode = bit_range(28, 32)
-
-class JmpRToken(OpcodeToken):
-    class Info:
-        size = 32
-        endianness = 'big'
-    a = bit_range(17, 20)
 
 class Imm16Token(Token):
     class Info:
@@ -84,7 +79,7 @@ isa = Isa()
 @isa.register_relocation
 class Rel12Relocation(Relocation):
     name = 'rel12'
-    token = JalToken
+    token = JmpToken
     field = 'imop12'
 
     def calc(self, sym_value, reloc_value):
@@ -316,7 +311,7 @@ class Jal(HadesInstruction):
     w = Operand('w', HadesRegister, write=True)
     target = Operand('target', str)
     syntax = Syntax(['jal', ' ', w, ',', ' ', '*', target])
-    tokens = [JalToken]
+    tokens = [JmpToken]
     patterns = {
         'opcode': 10,
         'aluopcode': 14,
@@ -327,10 +322,54 @@ class Jal(HadesInstruction):
     def relocations(self):        
         return [Rel12Relocation(self.target, offset=1)]
 
+
+class Bnezl(HadesInstruction):
+    a = Operand('a', HadesRegister, read=True)
+    target = Operand('target', str)
+    syntax = Syntax(['bnez', ' ', a, ',', ' ', '#', target])
+    tokens = [JmpToken]
+    patterns = {
+        'opcode': 5,
+        'aluopcode': 12,
+        'a': a,
+        'imminst': 1
+    }
+
+    def relocations(self):        
+        return [Rel12Relocation(self.target, offset=1)]
+
+class Beqzl(HadesInstruction):
+    a = Operand('a', HadesRegister, read=True)
+    target = Operand('target', str)
+    syntax = Syntax(['beqz', ' ', a, ',', ' ', '#', target])
+    tokens = [JmpToken]
+    patterns = {
+        'opcode': 6,
+        'aluopcode': 13,
+        'a': a,
+        'imminst': 1
+    }
+
+    def relocations(self):        
+        return [Rel12Relocation(self.target, offset=1)]
+
+class Jmpl(HadesInstruction):
+    target = Operand('target', str)
+    syntax = Syntax(['jmp', ' ', '#', target])
+    tokens = [JmpToken]
+    patterns = {
+        'opcode': 6,
+        'aluopcode': 13,
+        'imminst': 1
+    }
+
+    def relocations(self):        
+        return [Rel12Relocation(self.target, offset=1)]
+
 class Jreg(HadesInstruction):
     a = Operand('a', HadesRegister, read=True)
     syntax = Syntax(['jreg', ' ', a])
-    tokens = [JmpRToken]
+    tokens = [JmpToken]
     patterns = {
         'opcode': 11,
         'aluopcode': 6,
@@ -372,47 +411,6 @@ class Epma(HadesInstruction):
     }
 
 
-### additional instructions ###
-#class Call(HadesInstruction):
-#    """ call a function """
-#
-#    target = Operand("target", str)
-#    w = Operand("w", HadesRegister, write=True)
-#    syntax = Syntax(["call", " ", w, ",", " ", target])
-#    tokens = [JalToken]
-#    patterns = {
-#        'opcode': 10,
-#        'aluopcode': 14,
-#        'w': w,
-#        'imminst': 1
-#    }
-#
-#    def relocations(self):
-#        return [Rel12Relocation(self.target, offset=1)]
-
-#class Push(HadesInstruction):
-#    """ Push a register onto the stack """
-#    reg = Operand("reg", HadesRegister, read=True)
-#    syntax = Syntax(["push", " ", reg])
-#
-#    def encode(self):
-#        code = []
-#        # STORE self.reg.num sp 0
-#        opcode = 0x98
-#        regs = 0x80 + (self.reg.num << 4) + (registers.sp.num << 1) + 1
-#        code.append(0x00)
-#        code.append(0x00)
-#        code.append(regs)
-#        code.append(opcode)
-#        # ADDI sp sp 1  
-#        opcode = 0x08
-#        regs = 0x80 + (registers.sp.num << 4) + (registers.sp.num << 1) + 1
-#        code.append(0x01)
-#        code.append(0x00)
-#        code.append(regs)
-#        code.append(opcode)
-#        return bytes(code)
-
 def Mov(dst, src):
     return Addi(dst, src, 0)
 
@@ -430,92 +428,6 @@ def Dec(reg):
 
 def Jmp(imm):
     return Beqz(registers.r0, imm)
-
-#def Pop(reg):
-#    return (Load(reg, registers.sp, -1) + Subi(registers.sp, registers.sp, 1))
-
-
-#class Pop(HadesInstruction):
-#    """ Pop a register of the stack """
-#
-#    reg = Operand("reg", HadesRegister, write=True)
-#    syntax = Syntax(["pop", " ", reg])
-#
-#    def encode(self):
-#        code = []
-#        # SUBI sp sp 1  
-#        subinst = 0x08010001 + (registers.sp.num << 17) + (registers.sp.num << 20)
-#        code.append(subinst)
-#        # LOAD self.reg.num sp 0
-#        regbits = self.reg.num << 20
-#        spbits = registers.sp.num << 17
-#        opcode = 0x88810000
-#        loadinst = opcode + regbits + spbits
-#        code.append(loadinst)
-#        return bytes(code)
-#
-#
-#class Mov(HadesInstruction):
-#    a = Operand("a", HadesRegister, read=True)
-#    w = Operand("w", HadesRegister, write=True)
-#    syntax = Syntax(["mov", " ", a, ",", " ", w])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x08810000 + (self.w.num << 20) + (self.a.num << 17)
-#        code.append(inst)
-#
-#
-#class Ldi(HadesInstruction):
-#    w = Operand("w", HadesRegister, read=True)
-#    k = Operand('k', int)
-#    syntax = Syntax(["ldi", " ", w, ",", " ", "#", k])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x08810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
-#        code.append(inst)
-#
-#
-#class Ldui(HadesInstruction):
-#    w = Operand("w", HadesRegister, read=True)
-#    k = Operand('k', int)
-#    syntax = Syntax(["ldui", " ", w, ",", " ", "#", k])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x04810000 + (self.w.num << 20) + (registers.r0.num << 17) + self.k
-#        code.append(inst)
-#
-#
-#class Inc(HadesInstruction):
-#    a = Operand("a", HadesRegister, write=True, read=True)
-#    syntax = Syntax(["inc", " ", a])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x08810000 + (self.a.num << 20) + (self.a.num << 17) + 1
-#        code.append(inst)
-#
-#
-#class Dec(HadesInstruction):
-#    a = Operand("a", HadesRegister, write=True, read=True)
-#    syntax = Syntax(["inc", " ", a])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x08010000 + (self.a.num << 20) + (self.a.num << 17) + 1
-#        code.append(inst)
-#
-#
-#class Jmp(HadesInstruction):
-#    k = Operand('k', int)
-#    syntax = Syntax(["jmp", " ", "#", k])
-#
-#    def encode(self):
-#        code = []
-#        inst = 0x66810000 + (registers.r0.num << 17) + self.k
-#        code.append(inst)
 
 
 # Arithmatic patterns:
@@ -625,12 +537,25 @@ def pattern_fprel32(context, tree):
 def pattern_reg_as_mem(context, tree, c0):
     return c0, 0
 
-@isa.pattern("mem", "FPRELU32", size=0, cycles=0, energy=0)
-@isa.pattern("mem", "FPRELU16", size=0, cycles=0, energy=0)
+@isa.pattern("mem", "FPRELU32", size=1, cycles=1, energy=1)
+@isa.pattern("mem", "FPRELU16", size=1, cycles=1, energy=1)
 def pattern_fprel32(context, tree):
     offset = tree.value.offset
     base = registers.fp
     return base, offset
+
+# TODO 
+#@isa.pattern("stm", "MOVI32(LABEL)", size=1, cycles=1, energy=1)
+#def pattern_mov64_label(context, tree):
+#    label = tree.children[0].value
+#    context.emit(MovAdr(tree.value, label))
+
+# TODO
+#@isa.pattern("stm", "LABEL", size=1, cycles=1, energy=1)
+#def pattern_mov64_label(context, tree):
+#    label = tree.children[0].value
+#    d = context.new_reg(HadesRegister)
+#    context.emit(MovAdr(d, label))
 
 @isa.pattern("stm", "STRI32(mem, reg)", size=4, cycles=1, energy=1)
 @isa.pattern("stm", "STRU32(mem, reg)", size=4, cycles=1, energy=1)
@@ -754,17 +679,19 @@ jump_opnames = {"<": Slt, ">": Sgt, "==": Seq, "!=": Sne, ">=": Sge, "<=": Sle}
 @isa.pattern("stm", "JMP")
 def pattern_jmp(context, tree):
     tgt = tree.value
-    context.emit(Jal(registers.ra, tgt.name, jumps=[tgt]))
+    context.emit(Jmpl(tgt.name, jumps=[tgt]))
 
-
-#@isa.pattern("stm", "CJMPI32(reg, reg)")
-#@isa.pattern("stm", "CJMPI8(reg, reg)")
-#@isa.pattern("stm", "CJMPU8(reg, reg)")
-#def pattern_cjmp(context, tree, c0, c1):
-#    op, yes_label, no_label = tree.value
-#    d = context.new_reg(HadesRegister)
-#    Bop = jump_opnames[op]
-#    context.emit(Bop(d, c0, c1))
-#    context.emit(Bnez(d, 1, jumps=[yes_label]))
-#    context.emit(Jal(registers.ra, no_label.name, jumps=[no_label]))
-#    return
+@isa.pattern("stm", "CJMPU32(reg, reg)")
+@isa.pattern("stm", "CJMPI32(reg, reg)")
+@isa.pattern("stm", "CJMPU16(reg, reg)")
+@isa.pattern("stm", "CJMPI16(reg, reg)")
+@isa.pattern("stm", "CJMPU8(reg, reg)")
+@isa.pattern("stm", "CJMPI8(reg, reg)")
+def pattern_cjmp(context, tree, c0, c1):
+    op, yes_label, no_label = tree.value
+    d = context.new_reg(HadesRegister)
+    Bop = jump_opnames[op]
+    context.emit(Bop(d, c0, c1))
+    context.emit(Bnezl(d, yes_label.name, jumps=[yes_label]))
+    context.emit(Beqzl(d, no_label.name, jumps=[no_label]))
+    return
